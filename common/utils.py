@@ -8,5 +8,5 @@ def generate_basic_auth_token(username: str,
 
 def convert_dict(dd):
     if isinstance(dd,defaultdict):
-        return {k:conver_dict(v) for k,v in dd.items()}
+        return {k:convert_dict(v) for k,v in dd.items()}
     return dd
