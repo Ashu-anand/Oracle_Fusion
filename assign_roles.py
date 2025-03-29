@@ -9,7 +9,7 @@ import sys
 import os
 import logging
 
-from requests.packages.urllib3.exceptions import InsecureRequestWarning
+from urllib3.exceptions import InsecureRequestWarning
 r.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
 
@@ -48,33 +48,45 @@ def create_output_dict(response):
     return result
 
 
-def create_api_payload(file_name:str=None):
+def create_api_payload(reader):
     '''
     Adding Data Access to the users
     '''
-    if file_name is not None:
-        with open(file_name,'r',encoding='utf-8-sig',newline='') as file_obj:
-            reader=csv.reader(file_obj)
-            next(reader)
-            payload = {
-                "parts": [
-                    {
-                        "id": f"part{i+1}",
-                        "path": "/dataSecurities",
-                        "operation": "create",
-                        "payload": {
+    payload = {
+        "parts": [
+                {
+                    "id": f"part{i+1}",
+                    "path": "/dataSecurities",
+                    "operation": "create",
+                    "payload": {
                             "SecurityContext": Security_Context,
                             "SecurityContextValue": security_value,
                             "RoleNameCr": Role_NameCr,
                             "UserName": username
-                        }
-                    }
+                            }
+                }
                     for i,(username,Security_Context,Role_NameCr,security_value) in enumerate(reader)
                 ]
             }
-    else:
-        payload={}
     return payload
+
+
+def assign_data_access(base_url:str , 
+                       base_uri:str,
+                       p_token:str,
+                       reader:list
+                       )-> dict:
+    
+    url=f"{base_url}{base_uri}"
+    
+    headers={
+        'Content-Type': 'application/vnd.oracle.adf.batch+json',
+        'Authorization' :   p_token
+    }
+    json_payload = j.dumps(create_api_payload(reader), indent=4)
+    response=r.request("POST",url,headers=headers,data=json_payload, verify=False,timeout=30,stream=False)
+    
+    return response
 
 
 def fetch_data_from_api(base_url:str , 
@@ -91,8 +103,11 @@ def fetch_data_from_api(base_url:str ,
         #'Content-Type': 'application/vnd.oracle.adf.batch+json',
         'Authorization' :   p_token
     }
-    json_payload = j.dumps(create_api_payload(file_name), indent=4)    
-    response=r.request("GET",url,headers=headers,data=json_payload, verify=False,timeout=30,stream=False)
+
+    logger.debug(f'url : {url}')
+    logger.debug(f'header : {headers}')
+
+    response=r.request("GET",url,headers=headers,data={}, verify=False,timeout=30,stream=False)
     
     return response
 
@@ -124,7 +139,7 @@ def collect_user_roles(BASE_URL : str,
     totalResults=0
     runningTotal=0
     list_of_roles = {}
-    
+
     result=fetch_data_from_api(BASE_URL,URI_PATH,token,f'q=Userrf={file_username}&offset={runningTotal}')
     list_of_roles=create_output_dict(result)
     runningTotal=runningTotal + result.json().get('count')+1
@@ -140,6 +155,7 @@ def collect_user_roles(BASE_URL : str,
     return convert_dict(list_of_roles)
 
 
+logger.info("Loading Config File")
 config_data=load_config(config_path)
 instance_code, instance_name, username, password = (
     config_data["instance_code"],
@@ -148,27 +164,43 @@ instance_code, instance_name, username, password = (
     config_data["password"],
 )
 
+logger.info("Generating Token for the API call")
 token=generate_basic_auth_token(username,password)
-list_of_roles={}
 
 BASE_URL=f'https://{instance_code}-{instance_name}-saasfaprod1.fa.ocs.oraclecloud.com'
 URI_PATH=f'/fscmRestApi/resources/11.13.18.05/dataSecurities'
+ASSIGN_URI_PATH=f'/fscmRestApi/resources/latest'
 
 file_name='User_Data_Access.csv'
 
+logger.info("Reading Data file")
 df=pd.read_csv(file_name,dtype={"UserName":str})
 df.sort_values(by=["UserName"],inplace=True)
-for file_username in df["UserName"].unique():
-    list_of_roles=collect_user_roles(BASE_URL, URI_PATH, token, file_username)
 
 with open('Output.csv','w',encoding='utf-8-sig') as file_obj:
     file_obj.writelines("UserName, RoleName, SecurityContext, Value, Status\n")
-    for index,row in df.iterrows():
-        uname=row["UserName"]
-        rolename=row["RoleNameCr"]
-        security_context=row["SecurityContext"]
-        value=row["SecurityContextValue"]
-        if user_has_access(list_of_roles, uname, rolename, security_context, value):
-            file_obj.writelines(f"{uname}, {rolename}, {security_context}, {value}, Access already assigned\n")
-        else:
-            file_obj.writelines(f"{uname}, {rolename}, {security_context}, {value}, Value not assigned\n")
+    list_of_roles={}
+
+    for file_username in df["UserName"].unique():
+        reader=[]        
+        logger.info(f'Fetching list for {file_username}')
+        list_of_roles=collect_user_roles(BASE_URL, URI_PATH, token, file_username)
+
+        logger.info(f'Assigning Data Access for {file_username}')
+        for index,row in df[df["UserName"]==file_username].iterrows():
+            uname=row["UserName"]
+            rolename=row["RoleNameCr"]
+            security_context=row["SecurityContext"]
+            value=row["SecurityContextValue"]
+            if user_has_access(list_of_roles, uname, rolename, security_context, value):
+                file_obj.writelines(f"{uname}, {rolename}, {security_context}, {value}, Access already assigned\n")
+            else:
+                reader.append((uname,security_context,rolename,value))
+                file_obj.writelines(f"{uname}, {rolename}, {security_context}, {value}, Value not assigned\n")
+
+        if len(reader)!=0:            
+            result=assign_data_access(BASE_URL, ASSIGN_URI_PATH, token, reader)
+            if result.status_code==200:
+                logger.info(f'Data Access granted for {file_username}')
+            else:
+                print(result.text)
