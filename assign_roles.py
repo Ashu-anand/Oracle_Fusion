@@ -2,24 +2,53 @@ import requests as r
 import json as j
 from common.utils import generate_basic_auth_token,convert_dict
 from collections import defaultdict
+import pandas as pd
 import csv
 import yaml
+import sys
+import os
+import logging
 
-def create_output_list(result):
-    final_list={}
-    final_list=defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
-    for val in result.json().get('items'):
+from requests.packages.urllib3.exceptions import InsecureRequestWarning
+r.packages.urllib3.disable_warnings(InsecureRequestWarning)
+
+
+logger=logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+# Get the directory where the current script is located
+script_dir = os.path.dirname(os.path.abspath(__file__))
+
+# Build the path to the config.yaml file relative to the script
+config_path = os.path.join(script_dir, "config", "config.yaml")
+
+
+def load_config(config_path):    
+    try:
+        with open(config_path,"r") as f:
+            config=yaml.safe_load(f).get("oracle_fusion",{})
+            config_data={key:config.get(key) for key in ["instance_code", "instance_name", "username", "password"]}
+
+    except FileNotFoundError:
+        #logger.info("Config.yaml File not Found. Please enter the details manually.")
+        config_data={}
+        for key in ["instance_code", "instance_name", "username", "password"]:
+            config_data[key] = input(f"Enter {key.replace('_', ' ').title()}: ").strip()
+    return config_data
+
+
+def create_output_dict(response):
+    result=defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
+    for val in response.json().get('items'):
         User=val['Userrf']
         Role=val['Rolerf']
         context=val['SecurityContext']
         contextvalue=val['SecurityContextValue']
-        final_list[User][Role][context].append(contextvalue)
-    #final_list = j.dumps(final_list, indent=4)
-
-    return final_list
+        result[User][Role][context].append(contextvalue)
+    return result
 
 
-def create_payload(file_name:str=None):
+def create_api_payload(file_name:str=None):
     '''
     Adding Data Access to the users
     '''
@@ -48,29 +77,27 @@ def create_payload(file_name:str=None):
     return payload
 
 
-def fetch_data_access(base_url:str , 
+def fetch_data_from_api(base_url:str , 
                        base_uri:str,
                        p_token:str,
                        query_para:str='',
                        file_name:str=None                       
                        )-> dict:
-    if query_para!='':
-        query_para=f'?totalResults=true&{query_para}'
-    else:
-        query_para=f'?totalResults=true'
-    call_url=f"{base_url}{base_uri}{query_para}"
+    
+    query_para=f'?totalResults=true&{query_para}' if query_para else f'?totalResults=true'
+    url=f"{base_url}{base_uri}{query_para}"
     
     headers={
         #'Content-Type': 'application/vnd.oracle.adf.batch+json',
         'Authorization' :   p_token
     }
-    json_payload = j.dumps(create_payload(file_name), indent=4)    
-    response=r.request("GET",call_url,headers=headers,data=json_payload, verify=False,timeout=30,stream=False)
+    json_payload = j.dumps(create_api_payload(file_name), indent=4)    
+    response=r.request("GET",url,headers=headers,data=json_payload, verify=False,timeout=30,stream=False)
     
     return response
 
 
-def check_hierarchy(data, user, role, security_context, value):
+def user_has_access(data, user, role, security_context, value):
     """
     Checks if a given user has a specific role, security context, and value.
 
@@ -89,35 +116,38 @@ def check_hierarchy(data, user, role, security_context, value):
     )
 
 
-def create_role_list(BASE_URL : str,
-                     URI_PATH : str,
-                     token    : str,
-                     file_username:str):
+def collect_user_roles(BASE_URL : str,
+                       URI_PATH : str,
+                       token    : str,
+                       file_username:str):
     hasMore=True
     totalResults=0
     runningTotal=0
+    list_of_roles = {}
     
-    result=fetch_data_access(BASE_URL,URI_PATH,token,f'q=Userrf={file_username}&offset={runningTotal}')
-    list_of_roles=create_output_list(result)
+    result=fetch_data_from_api(BASE_URL,URI_PATH,token,f'q=Userrf={file_username}&offset={runningTotal}')
+    list_of_roles=create_output_dict(result)
     runningTotal=runningTotal + result.json().get('count')+1
     hasMore=result.json().get('hasMore')
 
     while hasMore:    
-        result=fetch_data_access(BASE_URL,URI_PATH,token,f'q=Userrf={file_username}&offset={runningTotal}')
-        hasMore=result.json().get('hasMore')
-        runningTotal=runningTotal + result.json().get('count')+1
+        result=fetch_data_from_api(BASE_URL,URI_PATH,token,f'q=Userrf={file_username}&offset={runningTotal}')
+        hasMore=result.json().get('hasMore', False)
+        runningTotal+= result.json().get('count',0)+1
 
-        list_of_roles[file_username].update(create_output_list(result)[file_username])
-        if result.status_code==200 and hasMore:
-            print('Yes')
+        list_of_roles[file_username].update(create_output_dict(result)[file_username])
 
     return convert_dict(list_of_roles)
 
 
-instance_code=input("Enter Instance Code")
-instance_name=input("Enter Instance Name")
-username=input("Enter Username")
-password=input("Enter Password")
+config_data=load_config(config_path)
+instance_code, instance_name, username, password = (
+    config_data["instance_code"],
+    config_data["instance_name"],
+    config_data["username"],
+    config_data["password"],
+)
+
 token=generate_basic_auth_token(username,password)
 list_of_roles={}
 
@@ -125,12 +155,11 @@ BASE_URL=f'https://{instance_code}-{instance_name}-saasfaprod1.fa.ocs.oracleclou
 URI_PATH=f'/fscmRestApi/resources/11.13.18.05/dataSecurities'
 
 file_name='User_Data_Access.csv'
-import pandas as pd
+
 df=pd.read_csv(file_name,dtype={"UserName":str})
 df.sort_values(by=["UserName"],inplace=True)
 for file_username in df["UserName"].unique():
-    list_of_roles=create_role_list(BASE_URL, URI_PATH, token, file_username)
-
+    list_of_roles=collect_user_roles(BASE_URL, URI_PATH, token, file_username)
 
 with open('Output.csv','w',encoding='utf-8-sig') as file_obj:
     file_obj.writelines("UserName, RoleName, SecurityContext, Value, Status\n")
@@ -139,7 +168,7 @@ with open('Output.csv','w',encoding='utf-8-sig') as file_obj:
         rolename=row["RoleNameCr"]
         security_context=row["SecurityContext"]
         value=row["SecurityContextValue"]
-        if check_hierarchy(list_of_roles, uname, rolename, security_context, value):
+        if user_has_access(list_of_roles, uname, rolename, security_context, value):
             file_obj.writelines(f"{uname}, {rolename}, {security_context}, {value}, Access already assigned\n")
         else:
             file_obj.writelines(f"{uname}, {rolename}, {security_context}, {value}, Value not assigned\n")

@@ -4,6 +4,8 @@ __pycache__/
 *$py.class
 
 config.yaml
+User_Data_Access.csv
+Output.csv
 
 # C extensions
 *.so
