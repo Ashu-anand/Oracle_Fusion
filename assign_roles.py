@@ -1,3 +1,10 @@
+'''
+Date            Ver     Description
+-----------     ----    -------------------------------------------------------
+29-Mar-2025     0.00    Added the Change Management
+29-MAr-2025     0.01    Added the logging information
+'''
+
 import requests as r
 import json as j
 from common.utils import generate_basic_auth_token,convert_dict
@@ -16,21 +23,22 @@ r.packages.urllib3.disable_warnings(InsecureRequestWarning)
 logger=logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
+logger.info("Starting script execution.")
+
 # Get the directory where the current script is located
 script_dir = os.path.dirname(os.path.abspath(__file__))
-
-# Build the path to the config.yaml file relative to the script
 config_path = os.path.join(script_dir, "config", "config.yaml")
 
 
-def load_config(config_path):    
+def load_config(config_path):
+    logger.debug(f"Loading config from {config_path}")
     try:
         with open(config_path,"r") as f:
             config=yaml.safe_load(f).get("oracle_fusion",{})
             config_data={key:config.get(key) for key in ["instance_code", "instance_name", "username", "password"]}
-
+        logger.info("Config file loaded successfully.")
     except FileNotFoundError:
-        #logger.info("Config.yaml File not Found. Please enter the details manually.")
+        logger.warning("Config.yaml File not Found. Please enter the details manually.")
         config_data={}
         for key in ["instance_code", "instance_name", "username", "password"]:
             config_data[key] = input(f"Enter {key.replace('_', ' ').title()}: ").strip()
@@ -38,13 +46,18 @@ def load_config(config_path):
 
 
 def create_output_dict(response):
+    logger.debug("Transforming API response into structured dictionary.")
     result=defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
-    for val in response.json().get('items'):
-        User=val['Userrf']
-        Role=val['Rolerf']
-        context=val['SecurityContext']
-        contextvalue=val['SecurityContextValue']
-        result[User][Role][context].append(contextvalue)
+    try:
+        for val in response.json().get('items'):
+            User=val['Userrf']
+            Role=val['Rolerf']
+            context=val['SecurityContext']
+            contextvalue=val['SecurityContextValue']
+            result[User][Role][context].append(contextvalue)
+        logger.debug("Transformation successful.")
+    except Exception as e:
+        logger.error(f"Error in processing API response: {e}")
     return result
 
 
@@ -84,10 +97,16 @@ def assign_data_access(base_url:str ,
         'Authorization' :   p_token
     }
     json_payload = j.dumps(create_api_payload(reader), indent=4)
-    response=r.request("POST",url,headers=headers,data=json_payload, verify=False,timeout=30,stream=False)
-    
-    return response
 
+    logger.info(f"Assigning data access for {len(reader)} records.")
+    logger.debug(f"Payload: {json_payload}")
+    try:
+        response=r.request("POST",url,headers=headers,data=json_payload, verify=False,timeout=30,stream=False)
+        logger.info(f"POST request sent. Status Code: {response.status_code}")
+        return response
+    except Exception as e:
+        logger.error(f"Failed to assign data access: {e}")
+        return None
 
 def fetch_data_from_api(base_url:str , 
                        base_uri:str,
@@ -98,18 +117,24 @@ def fetch_data_from_api(base_url:str ,
     
     query_para=f'?totalResults=true&{query_para}' if query_para else f'?totalResults=true'
     url=f"{base_url}{base_uri}{query_para}"
-    
-    headers={
-        #'Content-Type': 'application/vnd.oracle.adf.batch+json',
+
+    headers={        
         'Authorization' :   p_token
     }
 
-    logger.debug(f'url : {url}')
-    logger.debug(f'header : {headers}')
+    logger.info(f"Making GET request to {url}")
+    logger.debug(f"Headers: {headers}")
 
-    response=r.request("GET",url,headers=headers,data={}, verify=False,timeout=30,stream=False)
-    
-    return response
+    try:
+        response=r.request("GET",url,headers=headers,data={}, verify=False,timeout=30,stream=False)
+        if response.status_code==200:
+            logger.info("API response received successfully.")
+        else:
+            logger.warning(f"API returned status {response.status_code}: {response.text}")
+        return response
+    except Exception as e:
+        logger.error(f"Failed to fetch data: {e}")
+        return None
 
 
 def user_has_access(data, user, role, security_context, value):
@@ -157,6 +182,7 @@ def collect_user_roles(BASE_URL : str,
 
 logger.info("Loading Config File")
 config_data=load_config(config_path)
+
 instance_code, instance_name, username, password = (
     config_data["instance_code"],
     config_data["instance_name"],
@@ -173,17 +199,20 @@ ASSIGN_URI_PATH=f'/fscmRestApi/resources/latest'
 
 file_name='User_Data_Access.csv'
 
-logger.info("Reading Data file")
+logger.info(f"Reading CSV file: {file_name}")
+
 df=pd.read_csv(file_name,dtype={"UserName":str})
 df.sort_values(by=["UserName"],inplace=True)
 
+logger.info("Processing user data access")
 with open('Output.csv','w',encoding='utf-8-sig') as file_obj:
     file_obj.writelines("UserName, RoleName, SecurityContext, Value, Status\n")
     list_of_roles={}
 
     for file_username in df["UserName"].unique():
-        reader=[]        
-        logger.info(f'Fetching list for {file_username}')
+        reader=[]
+
+        logger.info(f'Fetching existing access for {file_username}')
         list_of_roles=collect_user_roles(BASE_URL, URI_PATH, token, file_username)
 
         logger.info(f'Assigning Data Access for {file_username}')
@@ -198,9 +227,10 @@ with open('Output.csv','w',encoding='utf-8-sig') as file_obj:
                 reader.append((uname,security_context,rolename,value))
                 file_obj.writelines(f"{uname}, {rolename}, {security_context}, {value}, Value not assigned\n")
 
-        if len(reader)!=0:            
+        if reader:
+            logger.info(f'Assigning new access for {file_username}')  
             result=assign_data_access(BASE_URL, ASSIGN_URI_PATH, token, reader)
             if result.status_code==200:
                 logger.info(f'Data Access granted for {file_username}')
             else:
-                print(result.text)
+                logger.error(f"Failed to assign access for {file_username}: {result.text if result else 'No response'}")
