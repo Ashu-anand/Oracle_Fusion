@@ -1,0 +1,6 @@
+UserName,RoleNameCr,SecurityContext,SecurityContextValue
+johndoe,Accounts Receivable Manager,Business unit,USA BU
+johndoe,Accounts Receivable Manager,Business unit,UK BU
+johndoe,Inventory Manager,Inventory organization,VAN
+johndoe,Inventory Manager,Inventory organization,CAN
+johndoe,Inventory Manager,Inventory organization,DAN
