@@ -1,0 +1,5 @@
+oracle_fusion:
+  instance_code: "xx-aaaa"
+  instance_name: "prd01"
+  username: "johndoe"
+  password: "password@123"
