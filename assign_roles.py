@@ -22,7 +22,7 @@ import yaml
 import os,sys
 import logging
 import urllib3
-from pythonjsonlogger import jsonlogger  # type: ignore
+from pythonjsonlogger import jsonlogger
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -35,7 +35,7 @@ def setup_logging(log_level=logging.INFO):
     handler = logging.StreamHandler(sys.stdout)
 
     # FIX: Remove rename_fields, it's not working correctly
-    formatter = jsonlogger.JsonFormatter(
+    formatter = jsonlogger.JsonFormatter( # type: ignore
         '%(asctime)s %(levelname)s %(name)s %(funcName)s %(message)s'
     )
     
