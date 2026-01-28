@@ -1,12 +1,12 @@
 '''
-Date            Ver     Description
------------     ----    -------------------------------------------------------
-29-Mar-2025     0.00    Added the Change Management
-29-Mar-2025     0.01    Added the logging information
-27-Jan-2026     0.02    refactoring the code to create a class for OracleFusionAccessManager
-TODO: 
-1) Remove trailing spaces from the names
-2) Add Role Assignment
+ Date            Ver     Description
+    -----------     ----    -------------------------------------------------------
+    29-Mar-2025     0.00    Added the Change Management
+    29-Mar-2025     0.01    Added the logging information
+    27-Jan-2026     0.02    refactoring the code to create a class for OracleFusionAccessManager
+    TODO: 
+    1) Remove trailing spaces from the names
+    2) Add Role Assignment
 '''
 import requests
 import json as j
@@ -19,16 +19,13 @@ import os
 import logging
 import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
-
 logger=logging.getLogger(__name__)
-
 class OracleFusionAccessManager:
     def __init__(self, 
-                 config_path,
-                 file_name,
-                 allow_interactive=False
-                 ):
+                config_path,
+                file_name,
+                allow_interactive=False
+                ):
         logger.debug("Class initialized")
         logger.info("Loading configuration data")
         self.allow_interactive=allow_interactive
@@ -44,10 +41,8 @@ class OracleFusionAccessManager:
         self.base_url: str  = f'https://{self.instance_code}-{self.instance_name}-saasfaprod1.fa.ocs.oraclecloud.com'
         self.uri_path: str  = f'/fscmRestApi/resources/11.13.18.05/dataSecurities'
         self.assign_uri_path:str =f'/fscmRestApi/resources/latest'
-
         logger.debug("Generating Token for the API call")
         self.token:str =generate_basic_auth_token(self.username,self.password)
-
     def load_config(self,config_path):
         logger.debug(f"Loading config from {config_path}")
         try:
@@ -76,11 +71,9 @@ class OracleFusionAccessManager:
         except FileNotFoundError:
             logger.error(f"CSV file {self.file_name} not found.")
             raise
-
     def user_has_access(self,data, user, role, security_context, value):
         """
         Checks if a given user has a specific role, security context, and value.
-
         :param data: The transformed dictionary from JSON response
         :param user: The user ID to check (e.g., "9999")
         :param role: The role to check (e.g., "Role 3")
@@ -94,18 +87,15 @@ class OracleFusionAccessManager:
             security_context in data[user][role] and 
             value in data[user][role][security_context]
         )
-
     def process_row(self):
         logger.info("Processing user data access")
         with open('Output.csv','w',encoding='utf-8-sig') as file_obj:
             file_obj.writelines("UserName, RoleName, SecurityContext, Value, Status\n")
             list_of_roles={}
-
             for file_username in self.df["UserName"].unique():
                 reader=[]
                 
                 logger.info(f'Fetching existing access for {file_username}')
-
                 list_of_roles=self.collect_user_roles(file_username)
                 logger.info(f'Assigning Data Access for {file_username}')
                 for index,row in self.df[self.df["UserName"]==file_username].iterrows():                    
@@ -125,7 +115,6 @@ class OracleFusionAccessManager:
                         logger.info(f'Data Access granted for {file_username}')
                     else:
                         logger.error(f"Failed to assign access for {file_username}: {result.text if result else 'No response'}")
-
     def create_api_payload(self, reader):
         '''
         Adding Data Access to the users
@@ -147,7 +136,6 @@ class OracleFusionAccessManager:
                     ]
                 }
         return payload
-
     def assign_data_access(self,
                         reader:list
                         )-> Optional[requests.Response]:
@@ -159,7 +147,6 @@ class OracleFusionAccessManager:
             'Authorization' :   self.token
         }
         json_payload = j.dumps(self.create_api_payload(reader), indent=4)
-
         logger.info(f"Assigning data access for {len(reader)} records.")
         logger.debug(f"Payload: {json_payload}")
         try:
@@ -170,23 +157,18 @@ class OracleFusionAccessManager:
             logger.error(f"Failed to assign data access: {e}")
             logger.error(f"Payload: {json_payload}")
             return None
-
     def collect_user_roles(self,
                         file_username:str):
         hasMore=True
         runningTotal=0
         list_of_roles = {}
-
         result=self.fetch_data_from_api(f'q=Userrf={file_username}&offset={runningTotal}')
-
         if result is None:
             logger.error(f"Failed to fetch data for user {file_username}")
             return {}
-
         list_of_roles=self.create_output_dict(result)
         runningTotal=runningTotal + result.json().get('count')+1
         hasMore=result.json().get('hasMore')
-
         while hasMore:    
             result=self.fetch_data_from_api(f'q=Userrf={file_username}&offset={runningTotal}')
             if result is None:
@@ -195,25 +177,19 @@ class OracleFusionAccessManager:
             
             hasMore=result.json().get('hasMore', False)
             runningTotal+= result.json().get('count',0)+1
-
             list_of_roles[file_username].update(self.create_output_dict(result)[file_username])
-
         return convert_dict(list_of_roles)
-
     def fetch_data_from_api(self,
                             query_para:str=''                      
                         )-> Optional[requests.Response]:
         
         query_para=f'?totalResults=true&{query_para}' if query_para else f'?totalResults=true'
         url=f"{self.base_url}{self.uri_path}{query_para}"
-
         headers={        
             'Authorization' :   self.token
         }
-
         logger.info(f"Making GET request to {url}")
         logger.debug(f"Headers: {headers}")
-
         try:
             response=requests.request("GET",url,headers=headers,data={}, verify=False,timeout=30,stream=False)
             if response.status_code==200:
@@ -224,7 +200,6 @@ class OracleFusionAccessManager:
         except Exception as e:
             logger.error(f"Failed to fetch data: {e}")
             return None
-
     def create_output_dict(self,response):
         logger.debug("Transforming API response into structured dictionary.")
         result=defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
@@ -239,8 +214,6 @@ class OracleFusionAccessManager:
         except Exception as e:
             logger.error(f"Error in processing API response: {e}")
         return result
-
-
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s- %(levelname)s - %(message)s')
     logger.info("Starting script execution.")
@@ -252,4 +225,3 @@ if __name__ == "__main__":
     assign_role=OracleFusionAccessManager(config_path,file_name,allow_interactive=True)    
     assign_role.read_csv()
     assign_role.process_row()
-
