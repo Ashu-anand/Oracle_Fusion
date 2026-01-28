@@ -7,6 +7,9 @@ Date            Ver     Description
    TODO:
    1) Remove trailing spaces from the names
    2) Add Role Assignment
+   3) Think about validating the csv file
+   4) There can be a case, where a user has role, but does not require the security context value. In that case, we need to skip the security context value check.
+   5)
 """
 
 import requests
@@ -102,7 +105,7 @@ class OracleFusionAccessManager:
             self.df = pd.read_csv(self.file_name, dtype={Config.CSV_USERNAME: str})
             self.df.sort_values(by=[Config.CSV_USERNAME], inplace=True)
             logger.info("CSV file read successfully.")
-            return self.df
+            return None
         except FileNotFoundError:
             logger.error(f"CSV file {self.file_name} not found.")
             raise
@@ -127,16 +130,19 @@ class OracleFusionAccessManager:
     def process_row(self):
         logger.info("Processing user data access")
         with open(Config.OUTPUT_FILE, "w", encoding="utf-8-sig") as file_obj:
+
+            """Creating header for output file"""
             file_obj.writelines("UserName, RoleName, SecurityContext, Value, Status\n")
+
             list_of_roles = {}
-            for file_username in self.df[Config.CSV_USERNAME].unique():
+            for username in self.df[Config.CSV_USERNAME].unique():
                 reader = []
 
-                logger.info(f"Fetching existing access for {file_username}")
-                list_of_roles = self.collect_user_roles(file_username)
-                logger.info(f"Assigning Data Access for {file_username}")
+                logger.info(f"Fetching existing access for {username}")
+                list_of_roles = self.collect_user_roles(username)
+                logger.info(f"Assigning Data Access for {username}")
                 for index, row in self.df[
-                    self.df[Config.CSV_USERNAME] == file_username
+                    self.df[Config.CSV_USERNAME] == username
                 ].iterrows():
                     uname = row[Config.CSV_USERNAME]
                     rolename = row[Config.CSV_ROLE_NAME]
@@ -154,15 +160,20 @@ class OracleFusionAccessManager:
                             f"{uname}, {rolename}, {security_context}, {value}, Value not assigned\n"
                         )
                 if reader:
-                    logger.info(f"Assigning new access for {file_username}")
-                    result = self.assign_data_access(reader)
-                    if result and result.status_code == 200:
-                        logger.info(f"Data Access granted for {file_username}")
-                    else:
-                        logger.error(
-                            f"Failed to assign access for {file_username}: {result.text if result else 'No response'}"
+                    self._assign_and_log(reader,username)
+                        
+
+    def _assign_and_log(self, reader: list,username:str) -> Optional[requests.Response]:
+        logger.info(f"Assigning new access for {username}")
+        result = self._assign_data_access(reader)
+        if result and result.status_code == 200:
+            logger.info(f"Data Access granted for {username}")
+        else:
+            logger.error(
+                            f"Failed to assign access for {username}: {result.text if result else 'No response'}"
                         )
 
+        
     def create_api_payload(self, reader):
         """
         Adding Data Access to the users
@@ -190,7 +201,7 @@ class OracleFusionAccessManager:
         }
         return payload
 
-    def assign_data_access(self, reader: list) -> Optional[requests.Response]:
+    def _assign_data_access(self, reader: list) -> Optional[requests.Response]:
 
         url = f"{self.base_url}{self.assign_uri_path}"
 
@@ -228,7 +239,7 @@ class OracleFusionAccessManager:
         if result is None:
             logger.error(f"Failed to fetch data for user {file_username}")
             return {}
-        list_of_roles = self.create_output_dict(result)
+        list_of_roles = self._create_output_dict(result)
         runningTotal = runningTotal + result.json().get("count") + 1
         hasMore = result.json().get("hasMore")
         while hasMore:
@@ -242,7 +253,7 @@ class OracleFusionAccessManager:
             hasMore = result.json().get("hasMore", False)
             runningTotal += result.json().get("count", 0) + 1
             list_of_roles[file_username].update(
-                self.create_output_dict(result)[file_username]
+                self._create_output_dict(result)[file_username]
             )
         return convert_dict(list_of_roles)
 
@@ -276,17 +287,23 @@ class OracleFusionAccessManager:
             logger.error(f"Failed to fetch data: {e}")
             return None
 
-    def create_output_dict(self, response):
+    def _create_output_dict(self, response):
+        """Transform API response into structured dictionary"""
         logger.debug("Transforming API response into structured dictionary.")
+
+        # Create nested dict structure: user -> role -> context -> [values]
         result = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
+
         try:
+            items = response.json().get("items", [])
             for val in response.json().get("items"):
-                User = val[Config.ORACLE_API_USER_FIELD]
-                Role = val[Config.ORACLE_API_ROLE_FIELD]
+                user = val[Config.ORACLE_API_USER_FIELD]
+                role = val[Config.ORACLE_API_ROLE_FIELD]
                 context = val[Config.ORACLE_API_SECURITY_CTX_FIELD]
                 contextvalue = val[Config.ORACLE_API_SECURITY_CTX_VAL_FIELD]
-                result[User][Role][context].append(contextvalue)
-            logger.debug("Transformation successful.")
+                result[user][role][context].append(contextvalue)
+
+            logger.debug(f"Transformation successful. Processed {len(items)} items.")
         except Exception as e:
             logger.error(f"Error in processing API response: {e}")
         return result
@@ -294,16 +311,23 @@ class OracleFusionAccessManager:
 
 if __name__ == "__main__":
     logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s - %(name)s- %(levelname)s - %(message)s"
+        level=logging.DEBUG, format="%(asctime)s - %(name)s- %(levelname)s - %(message)s"
     )
     logger.info("Starting script execution.")
 
     # Get the directory where the current script is located
     script_dir = os.path.dirname(os.path.abspath(__file__))
     config_path = os.path.join(script_dir, "config", "config.yaml")
+
     file_name = "User_Data_Access.csv"
+    
+    """Createing object of OracleFusionAccessManager class"""
     assign_role = OracleFusionAccessManager(
         config_path, file_name, allow_interactive=True
     )
+
+    """Reading CSV file"""
     assign_role.read_csv()
+
+    """Processing CSV file"""
     assign_role.process_row()
