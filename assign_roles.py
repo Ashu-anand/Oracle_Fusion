@@ -19,11 +19,32 @@ from collections import defaultdict
 from typing import Optional
 import pandas as pd
 import yaml
-import os
+import os,sys
 import logging
 import urllib3
+from pythonjsonlogger import jsonlogger  # type: ignore
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+def setup_logging(log_level=logging.INFO):
+    """Setup structured JSON logging for production observability"""
+    root_logger = logging.getLogger()
+    root_logger.handlers = []
+    root_logger.setLevel(log_level)
+    
+    handler = logging.StreamHandler(sys.stdout)
+
+    # FIX: Remove rename_fields, it's not working correctly
+    formatter = jsonlogger.JsonFormatter(
+        '%(asctime)s %(levelname)s %(name)s %(funcName)s %(message)s'
+    )
+    
+    handler.setFormatter(formatter)
+    root_logger.addHandler(handler)
+    
+    return root_logger
+
+# Module-level logger - DECLARE HERE, but don't call setup yet
 logger = logging.getLogger(__name__)
 
 
@@ -310,10 +331,17 @@ class OracleFusionAccessManager:
 
 
 if __name__ == "__main__":
-    logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s - %(name)s - %(funcName)s - %(levelname)s - %(message)s"
+    #logging.basicConfig(
+    #    level=logging.INFO, format="%(asctime)s - %(name)s - %(funcName)s - %(levelname)s - %(message)s"
+    #)
+    logger = setup_logging(log_level=logging.INFO)
+
+    logger.info(
+        "Starting script execution.1",
+        extra={
+            'event': 'Start Script'
+        }
     )
-    logger.info("Starting script execution.")
 
     # Get the directory where the current script is located
     script_dir = os.path.dirname(os.path.abspath(__file__))
