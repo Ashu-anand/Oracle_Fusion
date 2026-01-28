@@ -79,6 +79,24 @@ class OracleFusionAccessManager:
             logger.error(f"CSV file {self.file_name} not found.")
             raise
 
+    def user_has_access(self,data, user, role, security_context, value):
+        """
+        Checks if a given user has a specific role, security context, and value.
+
+        :param data: The transformed dictionary from JSON response
+        :param user: The user ID to check (e.g., "9999")
+        :param role: The role to check (e.g., "Role 3")
+        :param security_context: The security context to check (e.g., "Business Unit")
+        :param value: The security context value to check (e.g., "USA")
+        :return: True if all conditions exist, False otherwise
+        """
+        return (
+            user in data and 
+            role in data[user] and 
+            security_context in data[user][role] and 
+            value in data[user][role][security_context]
+        )
+
     def process_row(self,row):
         logger.info("Processing user data access")
         with open('Output.csv','w',encoding='utf-8-sig') as file_obj:
@@ -91,6 +109,17 @@ class OracleFusionAccessManager:
                 logger.info(f'Fetching existing access for {file_username}')
 
                 list_of_roles=self.collect_user_roles(file_username)
+                logger.info(f'Assigning Data Access for {file_username}')
+                for index,row in self.df[self.df["UserName"]==file_username].iterrows():
+                    uname=row["UserName"]
+                    rolename=row["RoleNameCr"]
+                    security_context=row["SecurityContext"]
+                    value=row["SecurityContextValue"]
+                if self.user_has_access(list_of_roles, uname, rolename, security_context, value):
+                    file_obj.writelines(f"{uname}, {rolename}, {security_context}, {value}, Access already assigned\n")
+                else:
+                    reader.append((uname,security_context,rolename,value))
+                    file_obj.writelines(f"{uname}, {rolename}, {security_context}, {value}, Value not assigned\n")
 
 
 
@@ -140,7 +169,23 @@ class OracleFusionAccessManager:
             return response
         except Exception as e:
             logger.error(f"Failed to fetch data: {e}")
-            return None
+            return {}
+
+    def create_output_dict(self,response):
+        logger.debug("Transforming API response into structured dictionary.")
+        result=defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
+        try:
+            for val in response.json().get('items'):
+                User=val['Userrf']
+                Role=val['Rolerf']
+                context=val['SecurityContext']
+                contextvalue=val['SecurityContextValue']
+                result[User][Role][context].append(contextvalue)
+            logger.debug("Transformation successful.")
+        except Exception as e:
+            logger.error(f"Error in processing API response: {e}")
+        return result
+
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s- %(levelname)s - %(message)s')
