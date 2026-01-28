@@ -6,6 +6,7 @@ Date            Ver     Description
 27-Jan-2026     0.02    refactoring the code to create a class for OracleFusionAccessManager
 '''
 
+import token
 import requests
 import json as j
 from common.utils import generate_basic_auth_token,convert_dict
@@ -49,15 +50,6 @@ class OracleFusionAccessManager:
         logger.info("Generating Token for the API call")
         self.token:str =generate_basic_auth_token(self.username,self.password)
 
-        
-        """self.session = requests.Session()
-        self.session.headers.update({
-            'Authorization': self.token,
-            'Content-Type': 'application/vnd.oracle.adf.batch+json',
-            'Accept': 'application/json'
-        })
-        """
-
     def load_config(self,config_path):
         logger.debug(f"Loading config from {config_path}")
         try:
@@ -79,14 +71,76 @@ class OracleFusionAccessManager:
     def read_csv(self):
         logger.info(f"Reading CSV file: {self.file_name}")
         try:
-            df=pd.read_csv(file_name,dtype={"UserName":str})
-            df.sort_values(by=["UserName"],inplace=True)
+            self.df=pd.read_csv(file_name,dtype={"UserName":str})
+            self.df.sort_values(by=["UserName"],inplace=True)
             logger.info("CSV file read successfully.")
-            return df
+            return self.df
         except FileNotFoundError:
             logger.error(f"CSV file {self.file_name} not found.")
             raise
 
+    def process_row(self,row):
+        logger.info("Processing user data access")
+        with open('Output.csv','w',encoding='utf-8-sig') as file_obj:
+            file_obj.writelines("UserName, RoleName, SecurityContext, Value, Status\n")
+            list_of_roles={}
+
+            for file_username in self.df["UserName"].unique():
+                reader=[]
+                
+                logger.info(f'Fetching existing access for {file_username}')
+
+                list_of_roles=self.collect_user_roles(file_username)
+
+
+
+    def collect_user_roles(self,
+                        file_username:str):
+        hasMore=True
+        totalResults=0
+        runningTotal=0
+        list_of_roles = {}
+
+        result=self.fetch_data_from_api(f'q=Userrf={file_username}&offset={runningTotal}')
+
+        list_of_roles=self.create_output_dict(result)
+        runningTotal=runningTotal + result.json().get('count')+1
+        hasMore=result.json().get('hasMore')
+
+        while hasMore:    
+            result=self.fetch_data_from_api(f'q=Userrf={file_username}&offset={runningTotal}')
+            hasMore=result.json().get('hasMore', False)
+            runningTotal+= result.json().get('count',0)+1
+
+            list_of_roles[file_username].update(self.create_output_dict(result)[file_username])
+
+        return convert_dict(list_of_roles)
+
+    def fetch_data_from_api(self,
+                            query_para:str='',
+                            file_name = None                       
+                        ):
+        
+        query_para=f'?totalResults=true&{query_para}' if query_para else f'?totalResults=true'
+        url=f"{self.base_url}{self.uri_path}{query_para}"
+
+        headers={        
+            'Authorization' :   self.token
+        }
+
+        logger.info(f"Making GET request to {url}")
+        logger.debug(f"Headers: {headers}")
+
+        try:
+            response=requests.request("GET",url,headers=headers,data={}, verify=False,timeout=30,stream=False)
+            if response.status_code==200:
+                logger.info("API response received successfully.")
+            else:
+                logger.warning(f"API returned status {response.status_code}: {response.text}")
+            return response
+        except Exception as e:
+            logger.error(f"Failed to fetch data: {e}")
+            return None
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s- %(levelname)s - %(message)s')
@@ -96,5 +150,6 @@ if __name__ == "__main__":
     script_dir = os.path.dirname(os.path.abspath(__file__))
     config_path = os.path.join(script_dir, "config", "config.yaml")
     file_name='User_Data_Access.csv'
-    assign_role=OracleFusionAccessManager(config_path,file_name,allow_interactive=True)
+    assign_role=OracleFusionAccessManager(config_path,file_name,allow_interactive=True)    
     assign_role.read_csv()
+
