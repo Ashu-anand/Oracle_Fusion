@@ -1,18 +1,30 @@
+"""Oracle Fusion bulk role assignment automation.
+
+Automates the assignment of data security roles to users in Oracle Fusion Cloud
+via REST APIs. Reads user-role mappings from CSV, checks existing access,
+and performs batch assignments for missing roles.
+
+Usage:
+    python assign_roles.py
+
+Configuration:
+    Requires config/config.yaml with Oracle Fusion connection details.
 """
-Date            Ver     Description
-   -----------     ----    -------------------------------------------------------
-   29-Mar-2025     0.00    Added the Change Management
-   29-Mar-2025     0.01    Added the logging information
-   27-Jan-2026     0.02    refactoring the code to create a class for OracleFusionAccessManager
-   21-Jan-2026     0.03    Removing code smell
-   TODO:
-   1) Remove trailing spaces from the names
-   2) Add Role Assignment
-   3) Think about validating the csv file
-   4) There can be a case, where a user has role, but does not require the security context value.
-   In that case, we need to skip the security context value check.
-   5)
-"""
+#Changelog:
+#  Date            Ver     Description
+#  -----------     ----    -------------------------------------------------------
+#   29-Mar-2025     0.00    Added the Change Management
+#   29-Mar-2025     0.01    Added the logging information
+#   27-Jan-2026     0.02    refactoring the code to create a class for OracleFusionAccessManager
+#   21-Jan-2026     0.03    Removing code smell
+#   TODO:
+#   1) Remove trailing spaces from the names
+#   2) Add Role Assignment
+#   3) Think about validating the csv file
+#   4) There can be a case, where a user has role, but does not require the security context value.
+#   In that case, we need to skip the security context value check.
+#
+
 
 import json
 import logging
@@ -24,7 +36,7 @@ import pandas
 import requests
 import urllib3
 import yaml
-from pythonjsonlogger import jsonlogger
+from pythonjsonlogger.json import JsonFormatter
 
 from common.utils import convert_dict, generate_basic_auth_token
 
@@ -72,7 +84,20 @@ class Config:
 
 
 class OracleFusionAccessManager:
-    def __init__(self, config_path, file_name, allow_interactive=False):
+    """Manages bulk data security role assignments in Oracle Fusion Cloud.
+
+    Handles configuration loading, CSV processing, API communication,
+    and role assignment verification against existing user access.
+
+    Args:
+        config_path: Path to YAML configuration file.
+        file_name: Path to CSV file containing user-role mappings.
+        allow_interactive: If True, prompts for credentials when config file is missing.
+    """
+    def __init__(self,
+                 config_path,
+                 file_name,
+                 allow_interactive=False):
         logger.debug("Class initialized")
         logger.info("Loading configuration data")
         self.allow_interactive = allow_interactive
@@ -93,7 +118,18 @@ class OracleFusionAccessManager:
         logger.debug("Generating Token for the API call")
         self.token: str = generate_basic_auth_token(self.username, self.password)
 
-    def load_config(self, config_path):
+    def load_config(self, config_path: str) -> dict:
+        """Load Oracle Fusion connection settings from YAML config file.
+
+        Args:
+            config_path: Path to the YAML configuration file.
+
+        Returns:
+            Dictionary containing instance_code, instance_name, username, and password.
+
+        Raises:
+            FileNotFoundError: If config file is missing and interactive mode is disabled.
+        """
         logger.debug(f"Loading config from {config_path}")
         try:
             with open(config_path) as f:
@@ -123,7 +159,12 @@ class OracleFusionAccessManager:
                 raise
         return config_data
 
-    def read_csv(self):
+    def read_csv(self) -> None:
+        """Read and sort the user-role mapping CSV file.
+
+        Raises:
+            FileNotFoundError: If the CSV file does not exist.
+        """
         logger.debug(f"Reading CSV file: {self.file_name}")
         try:
             self.df = pandas.read_csv(self.file_name, dtype={Config.CSV_USERNAME: str})
@@ -134,15 +175,23 @@ class OracleFusionAccessManager:
             logger.error(f"CSV file {self.file_name} not found.")
             raise
 
-    def user_has_access(self, data, user, role, security_context, value):
-        """
-        Checks if a given user has a specific role, security context, and value.
-        :param data: The transformed dictionary from JSON response
-        :param user: The user ID to check (e.g., "9999")
-        :param role: The role to check (e.g., "Role 3")
-        :param security_context: The security context to check (e.g., "Business Unit")
-        :param value: The security context value to check (e.g., "USA")
-        :return: True if all conditions exist, False otherwise
+    def user_has_access(self,
+                        data: dict,
+                        user: str,
+                        role: str,
+                        security_context: str,
+                        value: str) -> bool:
+        """Check if a user already has a specific role and security context assigned.
+
+        Args:
+            data: Nested dictionary of existing user access from API.
+            user: Username to check.
+            role: Role name to check.
+            security_context: Security context type (e.g., 'Business Unit').
+            value: Security context value (e.g., 'USA').
+
+        Returns:
+            True if the user already has the exact access, False otherwise.
         """
         return (
             user in data
@@ -151,7 +200,11 @@ class OracleFusionAccessManager:
             and value in data[user][role][security_context]
         )
 
-    def process_row(self):
+    def process_row(self) -> None:
+        """Process each user from CSV, check existing access, and assign missing roles.
+
+        Writes results to Output.csv with status for each user-role combination.
+        """
         logger.info("Processing user data access")
         with open(Config.OUTPUT_FILE, "w", encoding="utf-8-sig") as file_obj:
 
@@ -186,6 +239,11 @@ class OracleFusionAccessManager:
 
 
     def _assign_and_log(self, reader: list,username:str) -> requests.Response | None:
+        """Assign new data access and log the result.
+        Args:
+            reader: List of tuples containing (username, security_context, role, value).
+            username: Username being processed (for logging).
+        """
         logger.info(f"Assigning new access for {username}")
         result = self._assign_data_access(reader)
         if result and result.status_code == 200:
@@ -196,9 +254,14 @@ class OracleFusionAccessManager:
                         )
 
 
-    def create_api_payload(self, reader):
-        """
-        Adding Data Access to the users
+    def create_api_payload(self, reader: list) -> dict:
+        """Create batch API payload for Oracle Fusion data security assignment.
+
+        Args:
+            reader: List of tuples containing (username, security_context, role, value).
+
+        Returns:
+            Dictionary formatted for Oracle Fusion batch REST API.
         """
         payload = {
             "parts": [
@@ -224,6 +287,14 @@ class OracleFusionAccessManager:
         return payload
 
     def _assign_data_access(self, reader: list) -> requests.Response | None:
+        """Send batch POST request to assign data security roles.
+
+        Args:
+            reader: List of tuples containing (username, security_context, role, value).
+
+        Returns:
+            Response object on success, None on failure.
+        """
 
         url = f"{self.base_url}{self.assign_uri_path}"
 
@@ -251,7 +322,17 @@ class OracleFusionAccessManager:
             logger.error(f"Payload: {json_payload}")
             return None
 
-    def collect_user_roles(self, file_username: str):
+    def collect_user_roles(self, file_username: str) -> dict:
+        """Fetch all existing role assignments for a user from Oracle Fusion API.
+
+        Handles pagination automatically when the API returns multiple pages.
+
+        Args:
+            file_username: Username to query existing roles for.
+
+        Returns:
+            Nested dictionary of user's current role assignments.
+        """
         has_more: bool = True
         running_total: int = 0
         list_of_roles = {}
@@ -280,6 +361,14 @@ class OracleFusionAccessManager:
         return convert_dict(list_of_roles)
 
     def fetch_data_from_api(self, query_para: str = "") -> requests.Response | None:
+        """Make GET request to Oracle Fusion data securities API.
+
+        Args:
+            query_para: Query parameters to append to the API URL.
+
+        Returns:
+            Response object on success, None on failure.
+        """
 
         query_para = (
             f"?totalResults=true&{query_para}" if query_para else "?totalResults=true"
@@ -309,8 +398,15 @@ class OracleFusionAccessManager:
             logger.error(f"Failed to fetch data: {e}")
             return None
 
-    def _create_output_dict(self, response):
-        """Transform API response into structured dictionary"""
+    def _create_output_dict(self, response: requests.Response) -> dict:
+        """Transform API response into nested user-role-context dictionary.
+
+        Args:
+            response: API response containing data security items.
+
+        Returns:
+            Nested dict structured as {user: {role: {context: [values]}}}.
+        """
         logger.debug("Transforming API response into structured dictionary.")
 
         # Create nested dict structure: user -> role -> context -> [values]
@@ -350,7 +446,7 @@ if __name__ == "__main__":
 
     file_name = "User_Data_Access.csv"
 
-    """Createing object of OracleFusionAccessManager class"""
+    """Creating object of OracleFusionAccessManager class"""
     assign_role = OracleFusionAccessManager(
         config_path, file_name, allow_interactive=True
     )
