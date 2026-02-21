@@ -1,13 +1,11 @@
 """Tests for assign_roles.py"""
 
-import json
-from unittest.mock import MagicMock, mock_open, patch
+from unittest.mock import mock_open, patch
 
 import pytest
 import yaml
 
-from assign_roles import Config, OracleFusionAccessManager
-
+from assign_roles import OracleFusionAccessManager
 
 # ---- Fixtures (reusable test data) ----
 

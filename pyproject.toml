@@ -14,3 +14,6 @@ select = [
     "I",    # import sorting
     "UP",   # pyupgrade - modernize syntax for your python version
 ]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "S105", "S106"]

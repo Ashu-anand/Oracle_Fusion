@@ -36,7 +36,7 @@ import pandas
 import requests
 import urllib3
 import yaml
-from pythonjsonlogger.json import JsonFormatter
+from pythonjsonlogger import jsonlogger
 
 from common.utils import convert_dict, generate_basic_auth_token
 
