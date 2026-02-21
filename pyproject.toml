@@ -1,0 +1,14 @@
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+    "E",    # style errors
+    "W",    # style warnings
+    "F",    # unused imports, undefined names
+    "N",    # naming conventions
+    "S",    # security issues
+    "B",    # common bug patterns
+    "SIM",  # unnecessary complexity
+]

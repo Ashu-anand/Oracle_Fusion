@@ -11,7 +11,7 @@ from collections import defaultdict
 
 def generate_basic_auth_token(username: str,
                               passowrd: str)->str:
-    credentials : str =f"{username}:{passowrd}"    
+    credentials : str =f"{username}:{passowrd}"
     return f"Basic {base64.b64encode(credentials.encode()).decode()}"
 
 def convert_dict(dd):
