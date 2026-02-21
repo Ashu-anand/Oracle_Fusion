@@ -9,6 +9,7 @@ from assign_roles import OracleFusionAccessManager
 
 # ---- Fixtures (reusable test data) ----
 
+
 @pytest.fixture
 def sample_config():
     """Fake Oracle Fusion config data."""
@@ -36,6 +37,7 @@ def manager(sample_config):
 
 # ---- Config Loading Tests ----
 
+
 class TestLoadConfig:
     """Tests for configuration loading."""
 
@@ -59,17 +61,12 @@ class TestLoadConfig:
 
 # ---- user_has_access Tests ----
 
+
 class TestUserHasAccess:
     """Tests for user_has_access method."""
 
     def test_returns_true_when_access_exists(self, manager):
-        data = {
-            "user1": {
-                "Manager Role": {
-                    "Business Unit": ["USA"]
-                }
-            }
-        }
+        data = {"user1": {"Manager Role": {"Business Unit": ["USA"]}}}
         assert manager.user_has_access(data, "user1", "Manager Role", "Business Unit", "USA") is True
 
     def test_returns_false_when_user_missing(self, manager):
@@ -90,6 +87,7 @@ class TestUserHasAccess:
 
 
 # ---- API Payload Tests ----
+
 
 class TestCreateApiPayload:
     """Tests for create_api_payload method."""

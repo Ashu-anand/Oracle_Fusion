@@ -10,7 +10,7 @@ Usage:
 Configuration:
     Requires config/config.yaml with Oracle Fusion connection details.
 """
-#Changelog:
+# Changelog:
 #  Date            Ver     Description
 #  -----------     ----    -------------------------------------------------------
 #   29-Mar-2025     0.00    Added the Change Management
@@ -24,7 +24,6 @@ Configuration:
 #   4) There can be a case, where a user has role, but does not require the security context value.
 #   In that case, we need to skip the security context value check.
 #
-
 
 import json
 import logging
@@ -42,6 +41,7 @@ from common.utils import convert_dict, generate_basic_auth_token
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
+
 def setup_logging(log_level=logging.INFO):
     """Setup structured JSON logging for production observability"""
     root_logger = logging.getLogger()
@@ -50,14 +50,15 @@ def setup_logging(log_level=logging.INFO):
     handler = logging.StreamHandler(sys.stdout)
 
     # FIX: Remove rename_fields, it's not working correctly
-    formatter = jsonlogger.JsonFormatter( # type: ignore
-        '%(asctime)s %(levelname)s %(name)s %(funcName)s %(message)s'
+    formatter = jsonlogger.JsonFormatter(  # type: ignore
+        "%(asctime)s %(levelname)s %(name)s %(funcName)s %(message)s"
     )
 
     handler.setFormatter(formatter)
     root_logger.addHandler(handler)
 
     return root_logger
+
 
 # Module-level logger - DECLARE HERE, but don't call setup yet
 logger = logging.getLogger(__name__)
@@ -94,10 +95,8 @@ class OracleFusionAccessManager:
         file_name: Path to CSV file containing user-role mappings.
         allow_interactive: If True, prompts for credentials when config file is missing.
     """
-    def __init__(self,
-                 config_path,
-                 file_name,
-                 allow_interactive=False):
+
+    def __init__(self, config_path, file_name, allow_interactive=False):
         logger.debug("Class initialized")
         logger.info("Loading configuration data")
         self.allow_interactive = allow_interactive
@@ -110,9 +109,7 @@ class OracleFusionAccessManager:
             self.config_data["password"],
         )
 
-        self.base_url: str = (
-            f"https://{self.instance_code}-{self.instance_name}-saasfaprod1.fa.ocs.oraclecloud.com"
-        )
+        self.base_url: str = f"https://{self.instance_code}-{self.instance_name}-saasfaprod1.fa.ocs.oraclecloud.com"
         self.uri_path: str = "/fscmRestApi/resources/11.13.18.05/dataSecurities"
         self.assign_uri_path: str = "/fscmRestApi/resources/latest"
         logger.debug("Generating Token for the API call")
@@ -146,14 +143,10 @@ class OracleFusionAccessManager:
             logger.debug("Config file loaded successfully.")
         except FileNotFoundError:
             if self.allow_interactive:
-                logger.warning(
-                    "Config.yaml File not Found. Please enter the details manually."
-                )
+                logger.warning("Config.yaml File not Found. Please enter the details manually.")
                 config_data = {}
                 for key in ["instance_code", "instance_name", "username", "password"]:
-                    config_data[key] = input(
-                        f"Enter {key.replace('_', ' ').title()}: "
-                    ).strip()
+                    config_data[key] = input(f"Enter {key.replace('_', ' ').title()}: ").strip()
             else:
                 logger.error("Config.yaml File not Found.")
                 raise
@@ -175,12 +168,7 @@ class OracleFusionAccessManager:
             logger.error(f"CSV file {self.file_name} not found.")
             raise
 
-    def user_has_access(self,
-                        data: dict,
-                        user: str,
-                        role: str,
-                        security_context: str,
-                        value: str) -> bool:
+    def user_has_access(self, data: dict, user: str, role: str, security_context: str, value: str) -> bool:
         """Check if a user already has a specific role and security context assigned.
 
         Args:
@@ -207,7 +195,6 @@ class OracleFusionAccessManager:
         """
         logger.info("Processing user data access")
         with open(Config.OUTPUT_FILE, "w", encoding="utf-8-sig") as file_obj:
-
             """Creating header for output file"""
             file_obj.writelines("UserName, RoleName, SecurityContext, Value, Status\n")
 
@@ -223,22 +210,17 @@ class OracleFusionAccessManager:
                     rolename = row[Config.CSV_ROLE_NAME]
                     security_context = row[Config.CSV_SECURITY_CONTEXT]
                     value = row[Config.CSV_SECURITY_VALUE]
-                    if self.user_has_access(
-                        list_of_roles, uname, rolename, security_context, value
-                    ):
+                    if self.user_has_access(list_of_roles, uname, rolename, security_context, value):
                         file_obj.writelines(
                             f"{uname}, {rolename}, {security_context}, {value}, Access already assigned\n"
                         )
                     else:
                         reader.append((uname, security_context, rolename, value))
-                        file_obj.writelines(
-                            f"{uname}, {rolename}, {security_context}, {value}, Value not assigned\n"
-                        )
+                        file_obj.writelines(f"{uname}, {rolename}, {security_context}, {value}, Value not assigned\n")
                 if reader:
-                    self._assign_and_log(reader,username)
+                    self._assign_and_log(reader, username)
 
-
-    def _assign_and_log(self, reader: list,username:str) -> requests.Response | None:
+    def _assign_and_log(self, reader: list, username: str) -> requests.Response | None:
         """Assign new data access and log the result.
         Args:
             reader: List of tuples containing (username, security_context, role, value).
@@ -249,10 +231,7 @@ class OracleFusionAccessManager:
         if result and result.status_code == 200:
             logger.info(f"Data Access granted for {username}")
         else:
-            logger.error(
-                            f"Failed to assign access for {username}: {result.text if result else 'No response'}"
-                        )
-
+            logger.error(f"Failed to assign access for {username}: {result.text if result else 'No response'}")
 
     def create_api_payload(self, reader: list) -> dict:
         """Create batch API payload for Oracle Fusion data security assignment.
@@ -266,7 +245,7 @@ class OracleFusionAccessManager:
         payload = {
             "parts": [
                 {
-                    "id": f"part{i+1}",
+                    "id": f"part{i + 1}",
                     "path": "/dataSecurities",
                     "operation": "create",
                     "payload": {
@@ -336,9 +315,7 @@ class OracleFusionAccessManager:
         has_more: bool = True
         running_total: int = 0
         list_of_roles = {}
-        result = self.fetch_data_from_api(
-            f"q={Config.ORACLE_API_USER_FIELD}={file_username}&offset={running_total}"
-        )
+        result = self.fetch_data_from_api(f"q={Config.ORACLE_API_USER_FIELD}={file_username}&offset={running_total}")
         if result is None:
             logger.error(f"Failed to fetch data for user {file_username}")
             return {}
@@ -355,9 +332,7 @@ class OracleFusionAccessManager:
 
             has_more = result.json().get("hasMore", False)
             running_total += result.json().get("count", 0) + 1
-            list_of_roles[file_username].update(
-                self._create_output_dict(result)[file_username]
-            )
+            list_of_roles[file_username].update(self._create_output_dict(result)[file_username])
         return convert_dict(list_of_roles)
 
     def fetch_data_from_api(self, query_para: str = "") -> requests.Response | None:
@@ -370,9 +345,7 @@ class OracleFusionAccessManager:
             Response object on success, None on failure.
         """
 
-        query_para = (
-            f"?totalResults=true&{query_para}" if query_para else "?totalResults=true"
-        )
+        query_para = f"?totalResults=true&{query_para}" if query_para else "?totalResults=true"
         url = f"{self.base_url}{self.uri_path}{query_para}"
         headers = {"Authorization": self.token}
         logger.info(f"Making GET request to {url}")
@@ -390,9 +363,7 @@ class OracleFusionAccessManager:
             if response.status_code == 200:
                 logger.info("API response received successfully.")
             else:
-                logger.warning(
-                    f"API returned status {response.status_code}: {response.text}"
-                )
+                logger.warning(f"API returned status {response.status_code}: {response.text}")
             return response
         except Exception as e:
             logger.error(f"Failed to fetch data: {e}")
@@ -428,17 +399,12 @@ class OracleFusionAccessManager:
 
 
 if __name__ == "__main__":
-    #logging.basicConfig(
+    # logging.basicConfig(
     #    level=logging.INFO, format="%(asctime)s - %(name)s - %(funcName)s - %(levelname)s - %(message)s"
-    #)
+    # )
     logger = setup_logging(log_level=logging.INFO)
 
-    logger.info(
-        "Starting script execution.1",
-        extra={
-            'event': 'Start Script'
-        }
-    )
+    logger.info("Starting script execution.1", extra={"event": "Start Script"})
 
     # Get the directory where the current script is located
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -447,9 +413,7 @@ if __name__ == "__main__":
     file_name = "User_Data_Access.csv"
 
     """Creating object of OracleFusionAccessManager class"""
-    assign_role = OracleFusionAccessManager(
-        config_path, file_name, allow_interactive=True
-    )
+    assign_role = OracleFusionAccessManager(config_path, file_name, allow_interactive=True)
 
     """Reading CSV file"""
     assign_role.read_csv()
