@@ -11,4 +11,6 @@ select = [
     "S",    # security issues
     "B",    # common bug patterns
     "SIM",  # unnecessary complexity
+    "I",    # import sorting
+    "UP",   # pyupgrade - modernize syntax for your python version
 ]

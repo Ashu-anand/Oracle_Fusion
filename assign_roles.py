@@ -14,20 +14,19 @@ Date            Ver     Description
    5)
 """
 
-import requests
 import json
-import pandas
-import yaml
+import logging
 import os
 import sys
-import logging
-import urllib3
-
-from pythonjsonlogger import jsonlogger
-from common.utils import generate_basic_auth_token, convert_dict
 from collections import defaultdict
-from typing import Optional
 
+import pandas
+import requests
+import urllib3
+import yaml
+from pythonjsonlogger import jsonlogger
+
+from common.utils import convert_dict, generate_basic_auth_token
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -97,7 +96,7 @@ class OracleFusionAccessManager:
     def load_config(self, config_path):
         logger.debug(f"Loading config from {config_path}")
         try:
-            with open(config_path, "r") as f:
+            with open(config_path) as f:
                 config = yaml.safe_load(f).get("oracle_fusion", {})
                 config_data = {
                     key: config.get(key)
@@ -186,7 +185,7 @@ class OracleFusionAccessManager:
                     self._assign_and_log(reader,username)
 
 
-    def _assign_and_log(self, reader: list,username:str) -> Optional[requests.Response]:
+    def _assign_and_log(self, reader: list,username:str) -> requests.Response | None:
         logger.info(f"Assigning new access for {username}")
         result = self._assign_data_access(reader)
         if result and result.status_code == 200:
@@ -224,7 +223,7 @@ class OracleFusionAccessManager:
         }
         return payload
 
-    def _assign_data_access(self, reader: list) -> Optional[requests.Response]:
+    def _assign_data_access(self, reader: list) -> requests.Response | None:
 
         url = f"{self.base_url}{self.assign_uri_path}"
 
@@ -280,7 +279,7 @@ class OracleFusionAccessManager:
             )
         return convert_dict(list_of_roles)
 
-    def fetch_data_from_api(self, query_para: str = "") -> Optional[requests.Response]:
+    def fetch_data_from_api(self, query_para: str = "") -> requests.Response | None:
 
         query_para = (
             f"?totalResults=true&{query_para}" if query_para else "?totalResults=true"

@@ -1,6 +1,10 @@
 name: Code Quality
 
-on: [push]
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
 
 jobs:
   lint:
@@ -13,7 +17,10 @@ jobs:
           python-version: '3.11'
 
       - name: Install Ruff
-        run: pip install ruff
+        run: pip install ruff==0.9.7  # pin version
+
+      - name: Check Formatting
+        run: ruff format --check .
 
       - name: Run Linting
         run: ruff check .
