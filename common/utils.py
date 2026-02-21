@@ -7,7 +7,6 @@ Date            Ver     Description
 
 import base64
 from collections import defaultdict
-import os
 
 
 def generate_basic_auth_token(username: str,

@@ -90,8 +90,8 @@ class OracleFusionAccessManager:
         self.base_url: str = (
             f"https://{self.instance_code}-{self.instance_name}-saasfaprod1.fa.ocs.oraclecloud.com"
         )
-        self.uri_path: str = f"/fscmRestApi/resources/11.13.18.05/dataSecurities"
-        self.assign_uri_path: str = f"/fscmRestApi/resources/latest"
+        self.uri_path: str = "/fscmRestApi/resources/11.13.18.05/dataSecurities"
+        self.assign_uri_path: str = "/fscmRestApi/resources/latest"
         logger.debug("Generating Token for the API call")
         self.token: str = generate_basic_auth_token(self.username, self.password)
 
