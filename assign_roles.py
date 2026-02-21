@@ -286,7 +286,7 @@ class OracleFusionAccessManager:
     def fetch_data_from_api(self, query_para: str = "") -> Optional[requests.Response]:
 
         query_para = (
-            f"?totalResults=true&{query_para}" if query_para else f"?totalResults=true"
+            f"?totalResults=true&{query_para}" if query_para else "?totalResults=true"
         )
         url = f"{self.base_url}{self.uri_path}{query_para}"
         headers = {"Authorization": self.token}
