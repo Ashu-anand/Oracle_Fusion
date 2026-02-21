@@ -4,25 +4,30 @@ Date            Ver     Description
    29-Mar-2025     0.00    Added the Change Management
    29-Mar-2025     0.01    Added the logging information
    27-Jan-2026     0.02    refactoring the code to create a class for OracleFusionAccessManager
+   21-Jan-2026     0.03    Removing code smell
    TODO:
    1) Remove trailing spaces from the names
    2) Add Role Assignment
    3) Think about validating the csv file
-   4) There can be a case, where a user has role, but does not require the security context value. In that case, we need to skip the security context value check.
+   4) There can be a case, where a user has role, but does not require the 
+      security context value. In that case, we need to skip the security context value check.
    5)
 """
 
 import requests
-import json as j
+import json
+import pandas
+import yaml
+import os
+import sys
+import logging
+import urllib3
+
+from pythonjsonlogger import jsonlogger
 from common.utils import generate_basic_auth_token, convert_dict
 from collections import defaultdict
 from typing import Optional
-import pandas as pd
-import yaml
-import os,sys
-import logging
-import urllib3
-from pythonjsonlogger import jsonlogger
+
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -123,7 +128,7 @@ class OracleFusionAccessManager:
     def read_csv(self):
         logger.debug(f"Reading CSV file: {self.file_name}")
         try:
-            self.df = pd.read_csv(self.file_name, dtype={Config.CSV_USERNAME: str})
+            self.df = pandas.read_csv(self.file_name, dtype={Config.CSV_USERNAME: str})
             self.df.sort_values(by=[Config.CSV_USERNAME], inplace=True)
             logger.info("CSV file read successfully.")
             return None
@@ -230,7 +235,7 @@ class OracleFusionAccessManager:
             "Content-Type": "application/vnd.oracle.adf.batch+json",
             "Authorization": self.token,
         }
-        json_payload = j.dumps(self.create_api_payload(reader), indent=4)
+        json_payload = json.dumps(self.create_api_payload(reader), indent=4)
         logger.info(f"Assigning data access for {len(reader)} records.")
         logger.debug(f"Payload: {json_payload}")
         try:
